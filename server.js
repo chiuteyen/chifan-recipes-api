@@ -5,11 +5,11 @@ const bodyParser = require('koa-bodyparser');
 const now = Date.now();
 
 const categories = [
-  { _id: 'breakfast', name: '创意早餐', description: '每天都想认真吃的早饭', coverImage: '/assets/images/category-breakfast.svg', sort: 10, isVisible: true },
-  { _id: 'quick-10min', name: '10分钟快手料理', description: '忙的时候也能好好吃饭', coverImage: '/assets/images/category-quick.svg', sort: 20, isVisible: true },
-  { _id: 'castiron', name: '铸铁锅系列', description: '一口锅做出漂亮家常菜', coverImage: '/assets/images/category-castiron.svg', sort: 30, isVisible: true },
-  { _id: 'salad', name: '轻食色拉', description: '清爽、低负担、有满足感', coverImage: '/assets/images/category-salad.svg', sort: 40, isVisible: true },
-  { _id: 'soup', name: '汤料理', description: '热乎乎的一碗治愈感', coverImage: '/assets/images/category-soup.svg', sort: 50, isVisible: true }
+  { _id: 'breakfast', name: '创意早餐', description: '每天都想认真吃的早饭', coverImage: '/assets/images/recipes/euro-bread-sandwich/cover.jpg', sort: 10, isVisible: true },
+  { _id: 'quick-10min', name: '10分钟快手料理', description: '忙的时候也能好好吃饭', coverImage: '/assets/images/recipes/furu-kongxincai/cover.jpg', sort: 20, isVisible: true },
+  { _id: 'castiron', name: '铸铁锅系列', description: '一口锅做出漂亮家常菜', coverImage: '/assets/images/recipes/waterless-baked-fish/cover.jpg', sort: 30, isVisible: true },
+  { _id: 'salad', name: '轻食色拉', description: '清爽、低负担、有满足感', coverImage: '/assets/images/recipes/fresh-salsa/cover.jpg', sort: 40, isVisible: true },
+  { _id: 'soup', name: '汤料理', description: '热乎乎的一碗治愈感', coverImage: '/assets/images/recipes/waterless-baked-fish/IMG_2005.jpeg', sort: 50, isVisible: true }
 ];
 
 const tags = ['早餐', '快手', '10分钟', '新手友好', '低脂', '高蛋白', '色拉', '铸铁锅', '汤', '午餐', '晚餐'];
@@ -28,13 +28,15 @@ let recipes = [
     ingredients: ['空心菜', '蒜', '腐乳'],
     seasonings: ['盐', '糖', '食用油'],
     steps: [
-      { order: 1, text: '空心菜洗净沥干，菜梗和菜叶分开。', image: '' },
-      { order: 2, text: '锅热放油，蒜末爆香后先炒菜梗。', image: '' },
-      { order: 3, text: '加入腐乳汁和菜叶，快速翻炒出锅。', image: '' }
+      { order: 1, text: '空心菜洗净沥干，菜梗和菜叶分开。', image: '/assets/images/recipes/furu-kongxincai/step-ingredients.jpg' },
+      { order: 2, text: '锅热放油，蒜末爆香后先炒菜梗。', image: '/assets/images/recipes/furu-kongxincai/step-table.jpg' },
+      { order: 3, text: '加入腐乳汁和菜叶，快速翻炒出锅。', image: '/assets/images/recipes/furu-kongxincai/step-finished.jpg' }
     ],
+    introImages: ['/assets/images/recipes/furu-kongxincai/intro-01.jpeg', '/assets/images/recipes/furu-kongxincai/intro-02.jpeg'],
+    finalImage: '/assets/images/recipes/furu-kongxincai/final.jpeg',
     tips: '大火快炒，菜叶下锅后不要久炒。',
     commonMistakes: '火太小会出水，口感不脆。',
-    coverImage: '/assets/images/recipe-quick.svg',
+    coverImage: '/assets/images/recipes/furu-kongxincai/cover.jpg',
     videoTitle: '',
     douyinVideoSchema: '',
     douyinVideoId: '',
@@ -63,13 +65,15 @@ let recipes = [
     ingredients: ['番茄', '洋葱', '香菜', '柠檬'],
     seasonings: ['盐', '黑胡椒', '橄榄油'],
     steps: [
-      { order: 1, text: '番茄和洋葱切小丁。', image: '' },
-      { order: 2, text: '加入香菜、柠檬汁、盐和橄榄油。', image: '' },
-      { order: 3, text: '拌匀后静置 5 分钟更入味。', image: '' }
+      { order: 1, text: '番茄和洋葱切小丁。', image: '/assets/images/recipes/fresh-salsa/IMG_1989.jpeg' },
+      { order: 2, text: '加入香菜、柠檬汁、盐和橄榄油。', image: '/assets/images/recipes/fresh-salsa/IMG_1991.jpeg' },
+      { order: 3, text: '拌匀后静置 5 分钟更入味。', image: '/assets/images/recipes/fresh-salsa/IMG_1993.jpeg' }
     ],
+    introImages: ['/assets/images/recipes/fresh-salsa/IMG_1988.jpeg', '/assets/images/recipes/fresh-salsa/IMG_1990.jpeg'],
+    finalImage: '/assets/images/recipes/fresh-salsa/IMG_1992.jpeg',
     tips: '洋葱切好后可以用冷水泡一下，味道更柔和。',
     commonMistakes: '番茄水分太多会稀，切丁后可稍微控水。',
-    coverImage: '/assets/images/recipe-salad.svg',
+    coverImage: '/assets/images/recipes/fresh-salsa/cover.jpg',
     videoTitle: '',
     douyinVideoSchema: '',
     douyinVideoId: '',
