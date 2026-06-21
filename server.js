@@ -320,7 +320,7 @@ router.post('/admin', (ctx) => {
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 8000;
 app.listen(port, () => {
   console.log(`chifan-recipes-api listening on ${port}`);
 });
