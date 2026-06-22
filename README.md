@@ -6,7 +6,21 @@
 - `POST /favorites`
 - `POST /admin`
 
-目前这份代码先用内存保存数据，适合跑通小程序和云服务调用。注意：服务重启后，后台新增的食谱可能会丢失。正式上线前建议再接数据库。
+这份代码会优先连接抖音云 MongoDB。没有配置 MongoDB 时，会自动退回内存数据，方便本地调试。
+
+需要在抖音云配置中心同步这些配置：
+
+```text
+DB_MONGODB_ADDRESS
+DB_MONGODB_ACCOUNT
+DB_MONGODB_PASSWORD
+```
+
+可选配置：
+
+```text
+DB_MONGODB_DATABASE=chifan_recipes
+```
 
 后台演示账号：
 

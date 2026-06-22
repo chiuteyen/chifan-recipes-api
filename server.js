@@ -2,9 +2,20 @@ const Koa = require('koa');
 const Router = require('@koa/router');
 const bodyParser = require('koa-bodyparser');
 
+let MongoClient = null;
+try {
+  ({ MongoClient } = require('mongodb'));
+} catch (error) {
+  // The service can still run with in-memory data before dependencies are installed.
+}
+
 const now = Date.now();
 
-const categories = [
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+let categories = [
   { _id: 'breakfast', name: '创意早餐', description: '每天都想认真吃的早饭', coverImage: '/assets/images/recipes/euro-bread-sandwich/cover.jpg', sort: 10, isVisible: true },
   { _id: 'quick-10min', name: '10分钟快手料理', description: '忙的时候也能好好吃饭', coverImage: '/assets/images/recipes/furu-kongxincai/cover.jpg', sort: 20, isVisible: true },
   { _id: 'castiron', name: '铸铁锅系列', description: '一口锅做出漂亮家常菜', coverImage: '/assets/images/recipes/waterless-baked-fish/cover.jpg', sort: 30, isVisible: true },
@@ -12,7 +23,7 @@ const categories = [
   { _id: 'soup', name: '汤料理', description: '热乎乎的一碗治愈感', coverImage: '/assets/images/recipes/waterless-baked-fish/IMG_2005.jpeg', sort: 50, isVisible: true }
 ];
 
-const tags = ['早餐', '快手', '10分钟', '新手友好', '低脂', '高蛋白', '色拉', '铸铁锅', '汤', '午餐', '晚餐'];
+let tags = ['早餐', '快手', '10分钟', '新手友好', '低脂', '高蛋白', '色拉', '铸铁锅', '汤', '午餐', '晚餐'];
 
 let recipes = [
   {
@@ -107,8 +118,183 @@ let settings = {
   communityText: '想每天收到吃饭灵感？加入大小姐饭友群。'
 };
 
+const defaultState = clone({ categories, tags, recipes, homeSections, settings });
 const favoritesByUser = new Map();
 const adminToken = 'chifan-admin-token';
+
+let mongoDbPromise = null;
+let mongoSeeded = false;
+
+function normalizeAddress(address) {
+  let next = `${address || ''}`.trim();
+  if (!next) return '';
+  if (/^mongodb(\+srv)?:\/\//i.test(next)) return next;
+  next = next.replace(/\/(\d+)$/, ':$1');
+  if (!next.includes(':')) next = `${next}:27017`;
+  return next;
+}
+
+function getMongoConfig() {
+  const directUri = process.env.MONGODB_URI || process.env.DB_MONGODB_URI;
+  const databaseName = process.env.DB_MONGODB_DATABASE || process.env.MONGODB_DATABASE || 'chifan_recipes';
+
+  if (directUri) {
+    return { uri: directUri, databaseName };
+  }
+
+  const address = normalizeAddress(process.env.DB_MONGODB_ADDRESS);
+  const account = process.env.DB_MONGODB_ACCOUNT;
+  const password = process.env.DB_MONGODB_PASSWORD;
+
+  if (!address || !account || !password) {
+    return { uri: '', databaseName };
+  }
+
+  const user = encodeURIComponent(account);
+  const pass = encodeURIComponent(password);
+  return {
+    uri: `mongodb://${user}:${pass}@${address}/${databaseName}?authSource=admin`,
+    databaseName
+  };
+}
+
+async function getMongoDb() {
+  if (!MongoClient) return null;
+
+  const config = getMongoConfig();
+  if (!config.uri) return null;
+
+  if (!mongoDbPromise) {
+    mongoDbPromise = MongoClient.connect(config.uri, {
+      serverSelectionTimeoutMS: 5000
+    })
+      .then((client) => client.db(config.databaseName))
+      .catch((error) => {
+        mongoDbPromise = null;
+        console.warn(`MongoDB connection skipped: ${error.message}`);
+        return null;
+      });
+  }
+
+  return mongoDbPromise;
+}
+
+async function replaceCollection(name, docs) {
+  const db = await getMongoDb();
+  if (!db) return;
+  const collection = db.collection(name);
+  await collection.deleteMany({});
+  if (docs.length) {
+    await collection.insertMany(clone(docs));
+  }
+}
+
+async function saveRecipesToMongo() {
+  await replaceCollection('recipes', recipes);
+}
+
+async function saveCategoriesToMongo() {
+  await replaceCollection('categories', categories);
+}
+
+async function saveTagsToMongo() {
+  await replaceCollection('tags', tags.map((name, index) => ({ _id: name, name, sort: index })));
+}
+
+async function saveHomeSectionsToMongo() {
+  await replaceCollection('homeSections', homeSections);
+}
+
+async function saveSettingsToMongo() {
+  const db = await getMongoDb();
+  if (!db) return;
+  const nextSettings = { ...settings };
+  delete nextSettings._id;
+  await db.collection('settings').updateOne(
+    { _id: 'settings' },
+    { $set: nextSettings },
+    { upsert: true }
+  );
+}
+
+async function saveFavoriteToMongo(userId, recipeIds) {
+  const db = await getMongoDb();
+  if (!db) return;
+  await db.collection('favorites').updateOne(
+    { _id: userId },
+    { $set: { recipeIds, updatedAt: Date.now() } },
+    { upsert: true }
+  );
+}
+
+async function ensureMongoSeeded(db) {
+  if (mongoSeeded) return;
+
+  const recipeCount = await db.collection('recipes').countDocuments({});
+  if (!recipeCount) {
+    await db.collection('recipes').insertMany(clone(defaultState.recipes));
+  }
+
+  const categoryCount = await db.collection('categories').countDocuments({});
+  if (!categoryCount) {
+    await db.collection('categories').insertMany(clone(defaultState.categories));
+  }
+
+  const tagCount = await db.collection('tags').countDocuments({});
+  if (!tagCount) {
+    await db.collection('tags').insertMany(
+      defaultState.tags.map((name, index) => ({ _id: name, name, sort: index }))
+    );
+  }
+
+  const sectionCount = await db.collection('homeSections').countDocuments({});
+  if (!sectionCount) {
+    await db.collection('homeSections').insertMany(clone(defaultState.homeSections));
+  }
+
+  await db.collection('settings').updateOne(
+    { _id: 'settings' },
+    { $setOnInsert: defaultState.settings },
+    { upsert: true }
+  );
+
+  mongoSeeded = true;
+}
+
+async function loadStateFromMongo() {
+  const db = await getMongoDb();
+  if (!db) return;
+
+  try {
+    await ensureMongoSeeded(db);
+
+    const [recipeDocs, categoryDocs, tagDocs, sectionDocs, settingsDoc, favoriteDocs] = await Promise.all([
+      db.collection('recipes').find({}).toArray(),
+      db.collection('categories').find({}).toArray(),
+      db.collection('tags').find({}).sort({ sort: 1 }).toArray(),
+      db.collection('homeSections').find({}).toArray(),
+      db.collection('settings').findOne({ _id: 'settings' }),
+      db.collection('favorites').find({}).toArray()
+    ]);
+
+    recipes = recipeDocs.length ? recipeDocs : clone(defaultState.recipes);
+    categories = categoryDocs.length ? categoryDocs : clone(defaultState.categories);
+    tags = tagDocs.length ? tagDocs.map((tag) => tag.name || tag._id).filter(Boolean) : clone(defaultState.tags);
+    homeSections = sectionDocs.length ? sectionDocs : clone(defaultState.homeSections);
+
+    if (settingsDoc) {
+      const { _id, ...rest } = settingsDoc;
+      settings = { ...defaultState.settings, ...rest };
+    }
+
+    favoritesByUser.clear();
+    favoriteDocs.forEach((doc) => {
+      favoritesByUser.set(doc._id, Array.isArray(doc.recipeIds) ? doc.recipeIds : []);
+    });
+  } catch (error) {
+    console.warn(`MongoDB sync skipped: ${error.message}`);
+  }
+}
 
 function ok(data) {
   return { success: true, data };
@@ -152,7 +338,9 @@ function searchRecipes(keyword) {
   });
 }
 
-function handleRecipes(body) {
+async function handleRecipes(body) {
+  await loadStateFromMongo();
+
   const action = body.action;
   if (action === 'home') {
     const sections = homeSections
@@ -187,22 +375,27 @@ function handleRecipes(body) {
   if (action === 'recordView') {
     const recipe = getRecipe(body.recipeId);
     if (recipe) recipe.viewCount = (recipe.viewCount || 0) + 1;
+    await saveRecipesToMongo();
     return ok({});
   }
   if (action === 'recordShare') {
     const recipe = getRecipe(body.recipeId);
     if (recipe) recipe.shareCount = (recipe.shareCount || 0) + 1;
+    await saveRecipesToMongo();
     return ok({});
   }
   if (action === 'recordVideoClick') {
     const recipe = getRecipe(body.recipeId);
     if (recipe) recipe.videoClickCount = (recipe.videoClickCount || 0) + 1;
+    await saveRecipesToMongo();
     return ok({});
   }
   return fail('未知 recipes action');
 }
 
-function handleFavorites(body) {
+async function handleFavorites(body) {
+  await loadStateFromMongo();
+
   const userId = getUserId(body);
   const ids = getFavoriteIds(userId);
   if (body.action === 'list') {
@@ -223,6 +416,7 @@ function handleFavorites(body) {
       favorited = true;
       if (recipe) recipe.favoriteCount = (recipe.favoriteCount || 0) + 1;
     }
+    await Promise.all([saveFavoriteToMongo(userId, ids), saveRecipesToMongo()]);
     return ok({ favorited, favoriteCount: recipe ? recipe.favoriteCount : 0 });
   }
   return fail('未知 favorites action');
@@ -232,7 +426,9 @@ function requireAdmin(body) {
   return body.token === adminToken;
 }
 
-function handleAdmin(body) {
+async function handleAdmin(body) {
+  await loadStateFromMongo();
+
   if (body.action === 'login') {
     if (body.username === 'admin' && body.password === 'ChangeMe123!') {
       return ok({ token: adminToken, admin: { username: 'admin', nickname: '大小姐运营', role: 'admin' } });
@@ -263,21 +459,44 @@ function handleAdmin(body) {
     const index = recipes.findIndex((recipe) => recipe._id === id);
     if (index >= 0) recipes[index] = { ...recipes[index], ...next };
     else recipes.unshift(next);
+    await saveRecipesToMongo();
     return ok({ recipe: next, saved: true });
   }
   if (body.action === 'deleteRecipe') {
     recipes = recipes.filter((recipe) => recipe._id !== body.id);
+    homeSections = homeSections.map((section) => ({
+      ...section,
+      recipeIds: (section.recipeIds || []).filter((recipeId) => recipeId !== body.id)
+    }));
+    await Promise.all([saveRecipesToMongo(), saveHomeSectionsToMongo()]);
     return ok({ deleted: true });
   }
   if (body.action === 'updateRecipeStatus') {
     const recipe = getRecipe(body.id);
     if (recipe) recipe.status = body.status;
+    await saveRecipesToMongo();
     return ok({ updated: true });
   }
   if (body.action === 'listCategories') return ok({ list: categories });
-  if (body.action === 'saveCategory') return ok({ category: body.category, saved: true });
+  if (body.action === 'saveCategory') {
+    const input = body.category || {};
+    const id = input._id || `category-${Date.now()}`;
+    const next = { ...input, _id: id };
+    const index = categories.findIndex((item) => item._id === id);
+    if (index >= 0) categories[index] = next;
+    else categories.push(next);
+    await saveCategoriesToMongo();
+    return ok({ category: next, saved: true });
+  }
   if (body.action === 'listTags') return ok({ list: tags.map((name, index) => ({ _id: `tag-${index}`, name, useCount: 0, isHot: index < 6 })) });
-  if (body.action === 'saveTag') return ok({ tag: body.tag, saved: true });
+  if (body.action === 'saveTag') {
+    const input = body.tag || {};
+    const name = `${input.name || ''}`.trim();
+    if (!name) return fail('请填写标签名称');
+    if (!tags.includes(name)) tags.push(name);
+    await saveTagsToMongo();
+    return ok({ tag: { ...input, _id: name, name }, saved: true });
+  }
   if (body.action === 'listHomeSections') return ok({ list: homeSections });
   if (body.action === 'saveHomeSection') {
     const section = body.section || {};
@@ -286,11 +505,13 @@ function handleAdmin(body) {
     const index = homeSections.findIndex((item) => item._id === id);
     if (index >= 0) homeSections[index] = next;
     else homeSections.push(next);
+    await saveHomeSectionsToMongo();
     return ok({ section: next, saved: true });
   }
   if (body.action === 'getSettings') return ok(settings);
   if (body.action === 'saveSettings') {
     settings = { ...settings, ...(body.settings || {}) };
+    await saveSettingsToMongo();
     return ok({ settings, saved: true });
   }
   return fail('未知 admin action');
@@ -309,16 +530,16 @@ router.post('/example', (ctx) => {
   ctx.body = ok({ example: ctx.request.body || {} });
 });
 
-router.post('/recipes', (ctx) => {
-  ctx.body = handleRecipes(ctx.request.body || {});
+router.post('/recipes', async (ctx) => {
+  ctx.body = await handleRecipes(ctx.request.body || {});
 });
 
-router.post('/favorites', (ctx) => {
-  ctx.body = handleFavorites(ctx.request.body || {});
+router.post('/favorites', async (ctx) => {
+  ctx.body = await handleFavorites(ctx.request.body || {});
 });
 
-router.post('/admin', (ctx) => {
-  ctx.body = handleAdmin(ctx.request.body || {});
+router.post('/admin', async (ctx) => {
+  ctx.body = await handleAdmin(ctx.request.body || {});
 });
 
 app.use(router.routes());
