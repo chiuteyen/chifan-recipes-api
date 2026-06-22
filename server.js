@@ -15,6 +15,37 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function getRecipeImageBaseUrl() {
+  return `${process.env.RECIPE_IMAGE_BASE_URL || process.env.IMAGE_BASE_URL || ''}`.replace(/\/$/, '');
+}
+
+function toStorageImageUrl(value) {
+  if (!value || typeof value !== 'string') return value;
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const recipeAssetPrefix = '/assets/images/recipes/';
+  const imageBaseUrl = getRecipeImageBaseUrl();
+  if (!imageBaseUrl || !value.startsWith(recipeAssetPrefix)) return value;
+
+  return `${imageBaseUrl}/${value.slice(recipeAssetPrefix.length)}`;
+}
+
+function withStorageImageUrls(value) {
+  if (typeof value === 'string') return toStorageImageUrl(value);
+  if (Array.isArray(value)) return value.map(withStorageImageUrls);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).reduce((next, key) => {
+      next[key] = withStorageImageUrls(value[key]);
+      return next;
+    }, {});
+  }
+  return value;
+}
+
+function okPublic(data) {
+  return ok(withStorageImageUrls(data));
+}
+
 let categories = [
   {
     "_id": "creative-breakfast",
@@ -1250,7 +1281,7 @@ async function handleRecipes(body) {
         ...section,
         recipes: section.recipeIds.map(getRecipe).filter(Boolean).filter((recipe) => recipe.status === 'published')
       }));
-    return ok({
+    return okPublic({
       categories,
       recommended: sortRecipes(publishedRecipes().filter((recipe) => recipe.isRecommended), 'default').slice(0, 5),
       latest: sortRecipes(publishedRecipes(), 'latest').slice(0, 6),
@@ -1263,14 +1294,14 @@ async function handleRecipes(body) {
     if (body.status) list = recipes.filter((recipe) => recipe.status === body.status);
     if (body.categoryId) list = list.filter((recipe) => recipe.categoryId === body.categoryId);
     if (body.keyword) list = searchRecipes(body.keyword);
-    return ok({ list: sortRecipes(list, body.sort || 'default'), total: list.length });
+    return okPublic({ list: sortRecipes(list, body.sort || 'default'), total: list.length });
   }
   if (action === 'detail') {
-    return ok(getRecipe(body.id) || null);
+    return okPublic(getRecipe(body.id) || null);
   }
   if (action === 'search') {
     const list = searchRecipes(body.keyword);
-    return ok({ list, total: list.length });
+    return okPublic({ list, total: list.length });
   }
   if (action === 'recordView') {
     const recipe = getRecipe(body.recipeId);
@@ -1299,7 +1330,7 @@ async function handleFavorites(body) {
   const userId = getUserId(body);
   const ids = getFavoriteIds(userId);
   if (body.action === 'list') {
-    return ok({ list: ids.map(getRecipe).filter(Boolean), total: ids.length });
+    return okPublic({ list: ids.map(getRecipe).filter(Boolean), total: ids.length });
   }
   if (body.action === 'status') {
     return ok({ favorited: ids.includes(body.recipeId) });
@@ -1338,7 +1369,7 @@ async function handleAdmin(body) {
   if (!requireAdmin(body)) return fail('请先登录后台');
 
   if (body.action === 'stats') {
-    return ok({
+    return okPublic({
       totalRecipes: recipes.length,
       publishedRecipes: publishedRecipes().length,
       totalViews: recipes.reduce((sum, item) => sum + (item.viewCount || 0), 0),
@@ -1360,7 +1391,7 @@ async function handleAdmin(body) {
     if (index >= 0) recipes[index] = { ...recipes[index], ...next };
     else recipes.unshift(next);
     await saveRecipesToMongo();
-    return ok({ recipe: next, saved: true });
+    return okPublic({ recipe: next, saved: true });
   }
   if (body.action === 'deleteRecipe') {
     recipes = recipes.filter((recipe) => recipe._id !== body.id);

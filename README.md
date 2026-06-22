@@ -22,6 +22,15 @@ DB_MONGODB_PASSWORD
 
 ```text
 DB_MONGODB_DATABASE=chifan_recipes
+IMAGE_BASE_URL=https://你的对象存储图片域名/recipes
+```
+
+`IMAGE_BASE_URL` 用于把食谱里的本地图片路径 `/assets/images/recipes/...` 自动转换成对象存储图片地址。对象存储里建议保持这个结构：
+
+```text
+recipes/furu-kongxincai/cover.jpg
+recipes/furu-kongxincai/intro-01.jpeg
+recipes/fresh-salsa/cover.jpg
 ```
 
 后台演示账号：
